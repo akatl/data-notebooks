@@ -1,0 +1,164 @@
+---
+title: "Modelos ARIMA/SARIMA"
+author: "akatl"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Setup
+
+```{r}
+library(tseries)
+library(TTR)
+library(forecast)
+library(dotenv) # Automatically reads .env file
+source("inegi.R")
+readRenviron(".env")
+
+
+token <- Sys.getenv("INEGI_TOKEN")
+st1.id <- "736526"
+st2.id <- "735879"
+```
+
+# Primera Serie
+
+```{r}
+st1.ts <- datos_inegi_total(st1.id, token)
+```
+
+## Modelo ARIMA
+
+```{r}
+adf.test(st1.ts, k=12)
+
+par(mfrow=c(1,2))
+acf(st1.ts)
+pacf(st1.ts)
+```
+Para $\alpha = 0.05$, como $\alpha > p$ podemos rechazar $H_0$ y por lo tanto, hay evidencia suficiente de que la serie es estacionaria.
+
+Como la gráfica de la función ACF es decreciente, $q = 0$. Mientras que la de PACF se corta y por tanto, $p = 1$.
+Se propone el modelo $ARIMA(1, 0, 0)$
+
+```{r}
+st1.arima <- Arima(st1.ts, order = c(1, 0, 0))
+
+st1.arima
+
+summary(auto.arima(st1.ts, ic="bic"))
+
+ts.plot(st1.ts, st1.arima$fitted, col=1:2)
+```
+
+## Modelo SMA
+
+```{r}
+st1.sma <- SMA(st1.ts, n=4)
+ts.plot(st1.ts, st1.sma, col=1:2)
+```
+
+## Modelo MCS 
+
+```{r}
+st1.dummies <- seasonaldummy(st1.ts)
+st1.mcs <- tslm(st1.ts ~ trend + season)
+ts.plot(st1.ts, st1.mcs$fitted.values, col=1:2)
+```
+
+## Pronósticos
+
+Tenemos los pronósticos:
+```{r}
+st1.arima.forecast <- forecast(st1.arima, h=6, level=95)
+st1.sma.forecast <- forecast(st1.sma, h=6, level=95)
+st1.mcs.forecast <- forecast(st1.mcs, h=6, level=95)
+```
+
+### Comparación visual
+
+```{r}
+autoplot(st1.arima.forecast) + autolayer(st1.ts)
+autoplot(st1.sma.forecast) + autolayer(st1.ts)
+autoplot(st1.mcs.forecast) + autolayer(st1.ts)
+```
+En este caso, parece que el modelo SMA da un mejor predicción aunque las estimaciones no son las mejores.
+Los modelos ARIMA y MCS parecen dar mejores estimaciones y predicciones similares.
+
+# Segunda serie
+
+## Modelo ARIMA
+
+```{r}
+st2.ts <- datos_inegi_total(st2.id, token)
+```
+
+```{r}
+adf.test(st2.ts, k = 4)
+```
+
+Para $\alpha = 0.05$, como $\alpha$ < p-value, no podemos rechazar $H_0$.
+Intentamos con las diferencias.
+
+```{r}
+plot(diff(st2.ts, differences=1))
+adf.test(diff(st2.ts), k=4)
+```
+
+Esta vez, si hay evidencia suficiente para rechazar $H_0$ y podemos seguir con los siguientes pasos.
+
+```{r}
+par(mfrow=c(1,2))
+acf(diff(st2.ts, differences=1))
+pacf(diff(st2.ts, differences=1))
+```
+
+Como fue necesario usar las diferencias, $d = 1$.
+Ya que en los correlogramas, ACF se corta $q = 1$ de igual forma que PCAF, i.e, $p = q$.
+Por lo tanto, se propone el modelo ARIMA(1, 1, 1).
+
+```{r}
+st2.arima <- Arima(st2.ts, order = c(1, 1, 1))
+st2.arima
+ts.plot(st2.ts, st2.arima$fitted, col=1:2)
+```
+
+## Modelo MA
+
+```{r}
+st2.sma <- SMA(st2.ts, n=4)
+
+ts.plot(st2.ts, st2.sma, col=1:2)
+```
+
+## Modelo MCS
+
+```{r}
+st2.dummies <- seasonaldummy(st2.ts)
+st2.mcs <- tslm(st2.ts ~ trend + season)
+ts.plot(st2.ts, st2.mcs$fitted.values, col=1:2)
+```
+
+## Pronósticos
+
+Tenemos los pronósticos:
+
+```{r}
+st2.arima.forecast <- forecast(st2.arima, h=6, level=95)
+st2.sma.forecast <- forecast(st2.sma, h=6, level=95)
+st2.mcs.forecast <- forecast(st2.mcs, h=6, level=95)
+```
+
+### Comparación visual
+
+```{r}
+autoplot(st2.arima.forecast) + autolayer(st2.ts)
+autoplot(st2.sma.forecast) + autolayer(st2.ts)
+autoplot(st2.mcs.forecast) + autolayer(st2.ts)
+```
+
+En este caso, el modelo MCS parece apegarse más a la serie y dar un mejor pronóstico. Los modelos ARIMA parece modelar bien la serie, pero con mal pronóstico; el modelo SMA no modela muy bien el comportamiento de la serie ni parece dar un buen pronóstico.
